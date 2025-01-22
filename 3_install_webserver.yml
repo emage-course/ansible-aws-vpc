@@ -1,0 +1,35 @@
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #10 Install webserver                                                                                         #
+#                                                                                                                     #
+#######################################################################################################################
+---
+- name: Install Apache Web Server on EC2 Instance
+  hosts: development # Group where your EC2 instances are defined
+  become: yes
+  become_user: root
+  gather_facts: yes
+
+  tasks:
+    - name: Install required packages and update system
+      shell: |
+        sudo yum -y install httpd git
+        sudo yum -y update
+
+    - name: Clone the portfolio repository
+      shell: |
+        cd /tmp
+        git clone https://github.com/emage-course/portfolio.git
+        sleep 15s
+
+    - name: Copy application files to Apache root directory
+      shell: |
+        cd /tmp
+        sudo cp -r * /var/www/html/
+
+    - name: Start and enable Apache service
+      service:
+        name: httpd
+        state: started
+        enabled: yes
+

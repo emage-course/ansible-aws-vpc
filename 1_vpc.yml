@@ -1,0 +1,204 @@
+#######################################################################################################################
+#                                                                                                                     #
+#    Set variables                                                                                                    #
+#                                                                                                                     #
+#                                                                                                                     #
+#######################################################################################################################
+
+---
+- name: Launch EC2 Instance
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - group_vars/aws_keys.yml
+    - group_vars/all
+  collections:
+    - amazon.aws
+  tasks:
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #1 - Create a new Virtual Private Cloud (VPC) in AWS                                                          #         
+#            using ec2_vpc_net module                                                                                 #
+#                                                                                                                     #
+#######################################################################################################################
+
+
+    # Task #1: Create a new Virtual Private Cloud (VPC)
+    - name: Create a new Virtual Private Cloud (VPC)
+      amazon.aws.ec2_vpc_net:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        name: ansibleVPC
+        cidr_block: 10.10.0.0/16
+        tenancy: default
+        state: present
+      register: ansibleVPC
+
+    - name: Display VPC details
+      debug:
+        var: ansibleVPC
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #2 - Create an Internet Gateway to give external access from/to the EC2 instance                              #         
+#            using ec2_vpc_igw module                                                                                 #
+#                                                                                                                     #
+#######################################################################################################################
+
+    # Task #2: Create an Internet Gateway
+    - name: Create an Internet Gateway and associate with the VPC
+      amazon.aws.ec2_vpc_igw:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        vpc_id: "{{ ansibleVPC.vpc.id }}"
+        state: present
+        tags:
+          Name: ansibleIGW
+      register: ansibleIGW
+
+    - name: Display Internet Gateway details
+      debug:
+        var: ansibleIGW
+
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #3 - Create a public subnet to allocate an internal IPv4 address to the instance                              #
+#            using ec2_vpc_subjet module                                                                              #
+#                                                                                                                     #
+#######################################################################################################################
+
+    # Task #3: Create a Public Subnet
+    - name: Create a Public Subnet in the VPC
+      amazon.aws.ec2_vpc_subnet:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        vpc_id: "{{ ansibleVPC.vpc.id }}"
+        cidr: 10.10.1.0/24
+        map_public: yes
+        state: present
+        tags:
+          Name: ansibleSubnet
+      register: ansibleSubnet
+
+    - name: Display Subnet details
+      debug:
+        var: ansibleSubnet
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #4 - Create a route to provide external access to the subnet                                                  #
+#            using ec2_vpc_route_table module                                                                         #
+#                                                                                                                     #
+#######################################################################################################################
+
+    # Task #4: Create a Route Table
+    - name: Create a Route Table and associate with the subnet
+      amazon.aws.ec2_vpc_route_table:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        vpc_id: "{{ ansibleVPC.vpc.id }}"
+        state: present
+        subnets:
+          - "{{ ansibleSubnet.subnet.id }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ ansibleIGW.gateway_id }}"
+        tags:
+          Name: ansibleRT
+      register: ansibleRT
+
+    - name: Display Route Table details
+      debug:
+        var: ansibleRT
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #5 - Create an AWS Security Group to allow incoming Network access                                            #
+#            using ec2_group module                                                                                   #
+#                                                                                                                     #
+#######################################################################################################################
+
+    # Task #5: Create an AWS Security Group
+    - name: Create a Security Group in the VPC
+      amazon.aws.ec2_group:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        vpc_id: "{{ ansibleVPC.vpc.id }}"
+        name: ansibleSG
+        description: "Security group for demo"
+        state: present
+        rules:
+          - proto: tcp
+            ports: [22, 80, 443]
+            cidr_ip: 0.0.0.0/0
+        rules_egress:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+        tags:
+          Name: ansibleSG
+      register: ansibleSG
+
+    - name: Display Security Group details
+      debug:
+        var: ansibleSG
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #6 - Create SSH key to be used to login                                                                       #
+#             using ec2_key module                                                                                    #
+#                                                                                                                     #
+#######################################################################################################################
+
+
+    # Task #6: Create an SSH Key Pair
+    - name: Create a new EC2 Key Pair
+      amazon.aws.ec2_key:
+        name: "{{ ssh_keyname }}"
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        state: present
+      register: ec2_keypair
+
+    - name: Save the private key locally
+      copy:
+        content: "{{ ec2_keypair.key.private_key }}"
+        dest: "./{{ ssh_keyname }}.pem"
+        mode: 0600
+      when: ec2_keypair.changed
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #7 - Find Red Hat AMIs  to later use for provisioning EC2 instance                                            #
+#  using ec2_ami_info module                                                                                          #
+#                                                                                                                     #
+#######################################################################################################################
+
+    # Task #7: Find Amazon Linux 2 AMI
+    - name: Find the latest Amazon Linux 2 AMI
+      amazon.aws.ec2_ami_info:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        owners:
+          - "amazon"
+        filters:
+          name: "amzn2-ami-hvm-*-x86_64-gp2"
+          state: "available"
+      register: ami_info
+
+    - name: Set the latest AMI ID
+      set_fact:
+        ami_id: "{{ ami_info.images }}"
+
+    # - name: Output the latest AMI ID
+    #   debug:
+    #     msg: "The latest Amazon Linux 2 AMI ID is: {{ ami_id }}"
+

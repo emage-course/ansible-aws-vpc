@@ -1,0 +1,19 @@
+---
+- name: Deploy VPC, EC2, and Web Server
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - group_vars/aws_keys.yml
+    - group_vars/all
+  collections:
+    - amazon.aws
+
+  tasks:
+    - name: Include VPC creation playbook
+      include_tasks: 1_vpc.yml
+
+    - name: Include EC2 instance launch playbook
+      include_tasks: 2_ec2_instance.yml
+
+    - name: Include Web Server installation playbook
+      include_tasks: 3_install_webserver.yml

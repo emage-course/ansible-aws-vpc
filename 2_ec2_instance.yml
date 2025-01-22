@@ -1,0 +1,111 @@
+#######################################################################################################################
+#                                                                                                                     #
+#    Set variables                                                                                                    #
+#                                                                                                                     #
+#                                                                                                                     #
+#######################################################################################################################
+
+---
+- name: Launch EC2 Instance
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - group_vars/aws_keys.yml
+    - group_vars/all
+  collections:
+    - amazon.aws
+  tasks:
+
+#######################################################################################################################
+#                                                                                                                     #
+#   Create SSH key to be used to login                                                                                #
+#             using ec2_key module                                                                                    #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Task 6 → Create a new EC2 Keypair
+      ec2_key:
+          name: "{{ ssh_keyname }}"
+          aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+          aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+          region: "{{ AWS_REGION }}"   
+          state: present
+      register: ec2_keypair
+
+    - name: Display the Key
+      debug: 
+         var: ec2_keypair
+    
+    - name: Save the private key to file locally
+      copy: content="{{ ec2_keypair.key.private_key }}" dest="./ansible_key.pem" mode=0600
+      when: ec2_keypair.changed
+
+    - name: Find the latest Amazon Linux 2 AMI
+      amazon.aws.ec2_ami_info:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        owners:
+          - "amazon"
+        filters:
+          name: "amzn2-ami-hvm-*-x86_64-gp2"
+          state: "available"
+      register: ami_info
+
+    - name: Set the latest AMI ID
+      set_fact:
+        ami_id: "{{ ami_info.images[0].image_id }}"
+
+
+##### STARTING EC2 DEPLOYMENT #####
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #7 - Find Red Hat AMIs  to later use for provisioning EC2 instance                                            #
+#  using ec2_ami_info module                                                                                          #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Launch EC2 Instance
+      amazon.aws.ec2_instance:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        key_name: "devbox-key"
+        instance_type: "t2.micro"
+        vpc_subnet_id: "{{ ansibleSubnet.subnet.id }}"
+        security_groups: "{{ ansibleSG.group_id }}"
+        wait: yes
+        count: 1
+        image: "{{ ami_id }}"
+        tags:
+          Name: "demo-instance"
+      register: ec2_instance
+
+    - name: Debug - EC2 Instance details
+      debug:
+        var: ec2_instance
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #8 - Create a EC2 instance using ec2 module, combining                                                        #
+#            the resources created in the previous tasks                                                              #
+#                                                                                                                     #
+#######################################################################################################################
+
+- name: Dynamically add new EC2 instance(s) to host group
+  add_host:
+    name: "{{ item.public_ip }}"
+    groups: development
+  with_items: "{{ ec2.instances }}"
+
+- name: Wait for SSH to come up
+  wait_for:
+    host: "{{ item.public_ip }}"
+    port: 22
+    delay: 60
+    timeout: 320
+    state: started
+  with_items: "{{ ec2.instances }}"
+  register: ec2_key
+

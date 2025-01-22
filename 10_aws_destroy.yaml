@@ -1,0 +1,128 @@
+#######################################################################################################################
+#                                                                                                                     #
+#  Playbook: Destroy AWS Resources                                                                                    #
+#                                                                                                                     #
+#######################################################################################################################
+
+- name: Destroy AWS Resources
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - group_vars/aws_keys.yml
+    - group_vars/all
+  tasks:
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #1 - Terminate EC2 Instances                                                                                  #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Terminate EC2 Instances
+      amazon.aws.ec2_instance:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        instance_ids: "{{ ec2_instance.instances | map(attribute='id') | list }}"
+        state: absent
+      when: ec2_instance is defined
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #2 - Delete Security Group                                                                                    #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Delete Security Group
+      amazon.aws.ec2_group:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        group_id: "{{ ansibleSG.group_id }}"
+        state: absent
+      when: ansibleSG is defined
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #3 - Delete Route Table                                                                                       #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Delete Route Table
+      amazon.aws.ec2_vpc_route_table:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        route_table_id: "{{ ansibleRT.route_table.id }}"
+        state: absent
+      when: ansibleRT is defined
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #4 - Delete Subnet                                                                                            #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Delete Subnet
+      amazon.aws.ec2_vpc_subnet:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        subnet_id: "{{ ansibleSubnet.subnet.id }}"
+        state: absent
+      when: ansibleSubnet is defined
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #5 - Detach and Delete Internet Gateway                                                                       #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Detach and Delete Internet Gateway
+      amazon.aws.ec2_vpc_igw:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        vpc_id: "{{ ansibleVPC.vpc.id }}"
+        state: absent
+      when: ansibleIGW is defined
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #6 - Delete Key Pair                                                                                          #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Delete EC2 Key Pair
+      amazon.aws.ec2_key:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        name: "{{ ssh_keyname }}"
+        state: absent
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #7 - Delete VPC                                                                                               #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Delete VPC
+      amazon.aws.ec2_vpc_net:
+        aws_access_key: "{{ AWS_ACCESS_KEY_ID }}"
+        aws_secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+        region: "{{ AWS_REGION }}"
+        vpc_id: "{{ ansibleVPC.vpc.id }}"
+        state: absent
+      when: ansibleVPC is defined
+
+#######################################################################################################################
+#                                                                                                                     #
+#  Task #8 - Cleanup Local Key File                                                                                   #
+#                                                                                                                     #
+#######################################################################################################################
+
+    - name: Remove Local Private Key File
+      file:
+        path: "./{{ ssh_keyname }}.pem"
+        state: absent

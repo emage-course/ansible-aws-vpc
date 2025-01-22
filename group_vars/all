@@ -1,0 +1,3 @@
+ssh_keyname: "rds-key"
+ami_id: "ami-0e761b32e9a48c576"
+instance_type: "t2.micro"
