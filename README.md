@@ -29,21 +29,22 @@ pip install --upgrade ansible
 
 1. Save each playbook into separate
    files:
-   * infrastructure_setup.yml
-   * webserver_installation.yml
-   * deploy.yml (parent playbook)
+   * 1_vpc.yml
+   * 2_ec2_instance.yml
+   * 3_install_webserver.yml
+   * deploy_all.yml (parent playbook)
   
 2. Validate the playbooks for
 
 ### syntax:
 ```sh
-ansible-playbook 1_infrastructure_setup.yml --syntax-check
+ansible-playbook deploy_all.yml --syntax-check
 ```
 
 3. Run the parent playbook to deploy the infrastructure and application:
 
 ```sh
-ansible-playbook 1_infrastructure_setup.yml
+ansible-playbook deploy_all.yml
 ```
 
 **Notes**
@@ -62,7 +63,6 @@ If you encounter any issues, verify the following:
 
 ```sh
 ansible-galaxy collection list | grep amazon.aws
-```
 
 export AWS_ACCESS_KEY_ID="your_access_key"
 export AWS_SECRET_ACCESS_KEY="your_secret_key"
@@ -73,3 +73,4 @@ brew install python
 pip3 install virtualenv
 python3 -m venv devops-ansible
 source devops-ansible/bin/activate
+```
